@@ -1,0 +1,35 @@
+
+name: Build Criminal RP Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Criminal_RP_Mobile_Android_Build_Kit.zip'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.3.0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract project
+        run: |
+          unzip -q Criminal_RP_Mobile_Android_Build_Kit.zip -d extracted
+          cd extracted/Criminal_RP_Mobile_01
+          mkdir -p build
+
+      - name: Build Android APK
+        run: |
+          cd extracted/Criminal_RP_Mobile_01
+          godot --headless --path . --export-debug "Android" build/CriminalRP-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CriminalRP-Android-debug
+          path: extracted/Criminal_RP_Mobile_01/build/CriminalRP-debug.apk
