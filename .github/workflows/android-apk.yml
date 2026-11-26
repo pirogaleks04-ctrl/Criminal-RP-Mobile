@@ -5,7 +5,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'Criminal_RP_Mobile_Android_Build_Kit.zip'
+      - '*.zip'
+      - '.github/workflows/android-apk.yml'
 
 jobs:
   build:
@@ -17,22 +18,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - - name: Extract project
-  run: |
-    mkdir -p extracted
-    ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-    if [ -z "$ZIP_FILE" ]; then
-      echo "ZIP archive not found"
-      ls -la
-      exit 1
-    fi
-    echo "Found archive: $ZIP_FILE"
-    unzip -q "$ZIP_FILE" -d extracted
-    cd extracted/Criminal_RP_Mobile_01
-    mkdir -p build
+      - name: Extract project
+        run: |
+          mkdir -p extracted
+          ZIP_FILE=$(find . -type f -iname '*.zip' -not -path './extracted/*' | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ZIP archive not found in repository"
+            find . -maxdepth 3 -type f
+            exit 1
+          fi
+          echo "Found archive: $ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d extracted
+          PROJECT_DIR=$(find extracted -name project.godot -printf '%h\n' | head -n 1)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Godot project not found"
+            exit 1
+          fi
+          echo "Project: $PROJECT_DIR"
+          mkdir -p "$PROJECT_DIR/build"
+          echo "$PROJECT_DIR" > project_dir.txt
+
+      - name: Build Android APK
+        run: |
+          PROJECT_DIR=$(cat project_dir.txt)
+          godot --headless --path "$PROJECT_DIR" --export-debug "Android" "$PROJECT_DIR/build/CriminalRP-debug.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: CriminalRP-Android-debug
-          path: extracted/Criminal_RP_Mobile_01/build/CriminalRP-debug.apk
+          path: extracted/**/build/CriminalRP-debug.apk
