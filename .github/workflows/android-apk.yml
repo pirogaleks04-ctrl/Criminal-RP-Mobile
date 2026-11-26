@@ -17,16 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project
-        run: |
-          unzip -q Criminal_RP_Mobile_Android_Build_Kit.zip -d extracted
-          cd extracted/Criminal_RP_Mobile_01
-          mkdir -p build
-
-      - name: Build Android APK
-        run: |
-          cd extracted/Criminal_RP_Mobile_01
-          godot --headless --path . --export-debug "Android" build/CriminalRP-debug.apk
+      - - name: Extract project
+  run: |
+    mkdir -p extracted
+    ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+    if [ -z "$ZIP_FILE" ]; then
+      echo "ZIP archive not found"
+      ls -la
+      exit 1
+    fi
+    echo "Found archive: $ZIP_FILE"
+    unzip -q "$ZIP_FILE" -d extracted
+    cd extracted/Criminal_RP_Mobile_01
+    mkdir -p build
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
