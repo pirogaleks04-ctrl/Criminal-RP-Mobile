@@ -11,53 +11,86 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: barichello/godot-ci:latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project
-        run: |
-          mkdir -p extracted
-          ZIP_FILE=$(find . -type f -iname '*.zip' -not -path './extracted/*' | head -n 1)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ZIP archive not found in repository"
-            find . -maxdepth 3 -type f
-            exit 1
-          fi
-          echo "Found archive: $ZIP_FILE"
-          unzip -q "$ZIP_FILE" -d extracted
-          PROJECT_DIR=$(find extracted -name project.godot -printf '%h\n' | head -n 1)
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Godot project not found"
-            exit 1
-          fi
-          echo "Project: $PROJECT_DIR"
-          mkdir -p "$PROJECT_DIR/build"
-          echo "$PROJECT_DIR" > project_dir.txt
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-      - name: Build Android APK
-       
-      - name: Configure Android SDK
+      - name: Install Android SDK
         run: |
-          GODOT_VERSION=$(godot --version | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android sdkmanager not found"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+      - name: Install Godot 4.3
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          unzip -q Godot_v4.3-stable_linux.x86_64.zip
+          sudo mv Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          unzip -q Godot_v4.3-stable_export_templates.tpz -d /tmp/godot-templates
+          cp -r /tmp/godot-templates/templates/. ~/.local/share/godot/export_templates/4.3.stable/
+
+      - name: Find and extract project
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Project ZIP not found in repository root"
+            exit 1
+          fi
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+          PROJECT_FILE=$(find extracted -name project.godot -type f | head -n 1)
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "Godot project not found inside ZIP"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          mkdir -p "$PROJECT_DIR/build"
+
+      - name: Configure Android export
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p ~/.config/godot
+          GODOT_VERSION=$(godot --version | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
           cat > ~/.config/godot/editor_settings-${GODOT_VERSION}.tres <<'EOF'
           [gd_resource type="EditorSettings" format=3]
           [resource]
-          export/android/java_sdk_path = "/usr/lib/jvm/java-17-openjdk-amd64"
-          export/android/android_sdk_path = "/usr/lib/android-sdk"
-          export/android/debug_keystore = "/root/debug.keystore"
+          export/android/java_sdk_path = "/usr/lib/jvm/temurin-17-jdk-amd64"
+          export/android/android_sdk_path = "/usr/local/lib/android/sdk"
+          export/android/debug_keystore = "/home/runner/.android/debug.keystore"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           EOF
-          echo "Godot version: $GODOT_VERSION"
           java -version
-          ls /usr/lib/android-sdk/build-tools/        
-       run: |
-          PROJECT_DIR=$(cat project_dir.txt)
+          godot --version
+
+      - name: Build Android APK
+        run: |
           godot --headless --path "$PROJECT_DIR" --export-debug "Android" "$PROJECT_DIR/build/CriminalRP-debug.apk"
 
       - name: Upload APK
@@ -65,3 +98,4 @@ jobs:
         with:
           name: CriminalRP-Android-debug
           path: extracted/**/build/CriminalRP-debug.apk
+          if-no-files-found: error
