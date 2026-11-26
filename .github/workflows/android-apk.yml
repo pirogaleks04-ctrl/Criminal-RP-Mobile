@@ -39,7 +39,24 @@ jobs:
           echo "$PROJECT_DIR" > project_dir.txt
 
       - name: Build Android APK
+       
+      - name: Configure Android SDK
         run: |
+          GODOT_VERSION=$(godot --version | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-${GODOT_VERSION}.tres <<'EOF'
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/java_sdk_path = "/usr/lib/jvm/java-17-openjdk-amd64"
+          export/android/android_sdk_path = "/usr/lib/android-sdk"
+          export/android/debug_keystore = "/root/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          echo "Godot version: $GODOT_VERSION"
+          java -version
+          ls /usr/lib/android-sdk/build-tools/        
+       run: |
           PROJECT_DIR=$(cat project_dir.txt)
           godot --headless --path "$PROJECT_DIR" --export-debug "Android" "$PROJECT_DIR/build/CriminalRP-debug.apk"
 
